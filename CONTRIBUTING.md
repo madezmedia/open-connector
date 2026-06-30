@@ -1,0 +1,47 @@
+# Contributing
+
+Thanks for contributing to OOMOL Connect.
+
+## Development Setup
+
+```bash
+npm install
+npm run generate:catalog
+npm test
+```
+
+## Before Opening a Pull Request
+
+Run:
+
+```bash
+npm run lint
+npm run format
+npm test
+npm run build
+```
+
+## Adding Providers
+
+Follow [.codex/skills/add-provider/SKILL.md](.codex/skills/add-provider/SKILL.md).
+
+Provider definitions should be source-of-truth files under `src/providers/<service>/definition.ts`.
+Generated files such as `catalog/apps/*.json` and `src/providers/registry.generated.ts` should be
+updated through:
+
+```bash
+npm run generate:catalog
+```
+
+## Third-Party Rights
+
+Do not contribute third-party logos, icons, screenshots, documentation excerpts, API schemas, or
+brand assets unless you have the right to do so.
+
+Provider names, app names, trademarks, logos, and brand assets belong to their respective owners.
+This project uses such references only for identification and interoperability.
+
+## Contribution License
+
+By submitting a pull request, you agree that your contribution is provided under the Apache License,
+Version 2.0, unless you clearly mark it otherwise in writing.
