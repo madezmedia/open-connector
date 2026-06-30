@@ -15,7 +15,7 @@ await fetch("http://localhost:3000/api/connections/notion/api-key", {
   body: JSON.stringify({ values: { apiKey: token } }),
 });
 
-const response = await fetch("http://localhost:3000/api/actions/notion.search/execute", {
+const response = await fetch("http://localhost:3000/api/actions/notion.search", {
   method: "POST",
   headers: localHeaders({ "content-type": "application/json" }),
   body: JSON.stringify({ input: { page_size: 5 } }),

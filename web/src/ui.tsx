@@ -822,7 +822,7 @@ function RunActionModal(props: { action: ActionDefinition; onClose(): void }): R
     try {
       const parsed = input.trim() ? (JSON.parse(input) as unknown) : {};
       setResult(
-        await apiPost<ExecutionResult>(`/api/actions/${props.action.id}/execute`, {
+        await apiPost<ExecutionResult>(`/api/actions/${props.action.id}`, {
           input: parsed,
         }),
       );
@@ -896,7 +896,7 @@ function buildAgentPrompt(action: ActionDefinition): { prompt: string } {
   const markdownUrl = `${window.location.origin}/api/actions/${action.id}/agent.md`;
   const prompt = [
     `Read ${markdownUrl} to discover the local request contract for ${action.name}.`,
-    `Then call ${window.location.origin}/api/actions/${action.id}/execute with JSON shaped as { "input": ... }.`,
+    `Then call ${window.location.origin}/api/actions/${action.id} with JSON shaped as { "input": ... }.`,
     "Use the localhost runtime endpoint. Do not call the provider API directly unless I explicitly ask.",
   ].join("\n");
 
@@ -1077,12 +1077,12 @@ function buildActionExamples(action: ActionDefinition): { curl: string; typescri
   const bodyText = JSON.stringify(body, null, 2);
   return {
     curl: [
-      `curl -s http://localhost:3000/api/actions/${action.id}/execute \\`,
+      `curl -s http://localhost:3000/api/actions/${action.id} \\`,
       "  -H 'content-type: application/json' \\",
       `  -d '${JSON.stringify(body)}'`,
     ].join("\n"),
     typescript: [
-      `const response = await fetch("http://localhost:3000/api/actions/${action.id}/execute", {`,
+      `const response = await fetch("http://localhost:3000/api/actions/${action.id}", {`,
       `  method: "POST",`,
       `  headers: { "content-type": "application/json" },`,
       `  body: JSON.stringify(${bodyText}),`,

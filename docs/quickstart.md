@@ -14,7 +14,7 @@ Open the API reference at `http://localhost:3000/docs`.
 Run a no-auth action:
 
 ```bash
-curl -s http://localhost:3000/api/actions/hackernews.get_top_stories/execute \
+curl -s http://localhost:3000/api/actions/hackernews.get_top_stories \
   -H 'content-type: application/json' \
   -d '{"input":{}}'
 ```

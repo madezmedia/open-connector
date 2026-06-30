@@ -85,6 +85,19 @@ describe("ConnectServer", () => {
     });
   });
 
+  it("documents action execution on the action resource route", async () => {
+    const app = createTestServer([{ ...apiKeyProvider, actions: [echoAction] }]).createApp();
+
+    const response = await app.request("/openapi.json");
+    const document = (await response.json()) as {
+      paths: Record<string, Record<string, unknown>>;
+    };
+
+    expect(document.paths["/api/actions/{actionId}"]).toHaveProperty("get");
+    expect(document.paths["/api/actions/{actionId}"]).toHaveProperty("post");
+    expect(document.paths).not.toHaveProperty("/api/actions/{actionId}/execute");
+  });
+
   it("stores redacted run log summaries for HTTP action execution", async () => {
     const runs = new MemoryRunLogStore();
     const app = createTestServer(
@@ -100,7 +113,7 @@ describe("ConnectServer", () => {
       },
     ).createApp();
 
-    const response = await app.request("/api/actions/example.echo/execute", {
+    const response = await app.request("/api/actions/example.echo", {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
@@ -145,7 +158,7 @@ describe("ConnectServer", () => {
       },
     ).createApp();
 
-    const response = await app.request("/api/actions/example.echo/execute", {
+    const response = await app.request("/api/actions/example.echo", {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ input: {} }),

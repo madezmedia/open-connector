@@ -41,7 +41,7 @@ http://localhost:3000/docs
 Try a Hacker News action:
 
 ```bash
-curl -s http://localhost:3000/api/actions/hackernews.get_top_stories/execute \
+curl -s http://localhost:3000/api/actions/hackernews.get_top_stories \
   -H 'content-type: application/json' \
   -d '{"input":{}}'
 ```
@@ -124,7 +124,7 @@ The local server currently exposes:
 - `GET /api/apps/:service`
 - `GET /api/actions`
 - `GET /api/actions/:actionId`
-- `POST /api/actions/:actionId/execute`
+- `POST /api/actions/:actionId`
 - `GET /api/connections`
 - `POST /api/connections/:service/no-auth`
 - `PUT /api/connections/:service/api-key`

@@ -119,10 +119,12 @@ export function createOpenApiDocument(
       type: "array",
       items: { $ref: "#/components/schemas/ActionDefinition" },
     }),
-    "/api/actions/{actionId}": getOperation("Get one catalog action.", {
-      $ref: "#/components/schemas/ActionDefinition",
-    }),
-    "/api/actions/{actionId}/execute": createGenericExecutePath(),
+    "/api/actions/{actionId}": {
+      ...getOperation("Get one catalog action.", {
+        $ref: "#/components/schemas/ActionDefinition",
+      }),
+      ...createGenericExecutePath(),
+    },
     "/api/connections": getOperation("List local provider connections.", {
       type: "array",
       items: { $ref: "#/components/schemas/ConnectionSummary" },
@@ -156,7 +158,7 @@ export function createOpenApiDocument(
   };
 
   if (concreteAction) {
-    paths[`/api/actions/${concreteAction.id}/execute`] = createExecutePath(concreteAction);
+    paths[`/api/actions/${concreteAction.id}`] = createExecutePath(concreteAction);
   }
 
   return {

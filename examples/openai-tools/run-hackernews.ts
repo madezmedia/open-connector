@@ -77,7 +77,7 @@ for (const toolCall of toolCalls) {
     throw new Error(`Unknown tool call: ${toolCall.name}`);
   }
 
-  const executionResponse = await fetch(`http://localhost:3000/api/actions/${actionId}/execute`, {
+  const executionResponse = await fetch(`http://localhost:3000/api/actions/${actionId}`, {
     method: "POST",
     headers: localHeaders({ "content-type": "application/json" }),
     body: JSON.stringify({ input: JSON.parse(toolCall.arguments || "{}") }),

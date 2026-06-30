@@ -84,7 +84,7 @@ export class ConnectServer {
     app.get("/api/actions/:actionId/agent.md", (context) =>
       this.getActionMarkdown(context, context.req.param("actionId")),
     );
-    app.post("/api/actions/:actionId/execute", (context) => this.executeAction(context, context.req.param("actionId")));
+    app.post("/api/actions/:actionId", (context) => this.executeAction(context, context.req.param("actionId")));
 
     app.get("/api/connections", (context) => this.listConnections(context));
     app.post("/api/connections/:service/no-auth", (context) =>

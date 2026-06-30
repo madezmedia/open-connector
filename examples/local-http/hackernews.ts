@@ -2,7 +2,7 @@
 
 import { localHeaders } from "./client.ts";
 
-const response = await fetch("http://localhost:3000/api/actions/hackernews.get_top_stories/execute", {
+const response = await fetch("http://localhost:3000/api/actions/hackernews.get_top_stories", {
   method: "POST",
   headers: localHeaders({ "content-type": "application/json" }),
   body: JSON.stringify({ input: {} }),
