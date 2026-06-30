@@ -60,20 +60,6 @@ const executionResultSchema = jsonSchema.object(
   },
 );
 
-const credentialValuesSchema = jsonSchema.object(
-  {
-    values: {
-      type: "object",
-      additionalProperties: { type: "string" },
-      description: "Credential values keyed by provider-declared field ids.",
-    },
-  },
-  {
-    required: ["values"],
-    description: "Credential connection request.",
-  },
-);
-
 const oauthClientConfigRequestSchema = jsonSchema.object(
   {
     clientId: jsonSchema.string({ description: "OAuth app client id." }),
@@ -97,7 +83,7 @@ const oauthClientConfigRequestSchema = jsonSchema.object(
  *
  * The action catalog remains the source of truth for provider-specific input
  * and output schemas. The default document stays compact and exposes one
- * generic execute route. Pass `actionId` to embed one concrete action schema for
+ * generic run creation route. Pass `actionId` to embed one concrete action schema for
  * tool importers that need a small strongly typed OpenAPI document.
  */
 export function createOpenApiDocument(
@@ -106,6 +92,11 @@ export function createOpenApiDocument(
 ): OpenApiDocument {
   const actions = providers.flatMap((provider) => provider.actions);
   const concreteAction = options.actionId ? actions.find((action) => action.id === options.actionId) : undefined;
+  const runsPath = createRunsPath();
+  if (concreteAction) {
+    runsPath.post = createConcreteRunOperation(concreteAction);
+  }
+
   const paths: Record<string, unknown> = {
     "/health": getOperation("Runtime health check.", { ok: jsonSchema.boolean() }),
     "/api/apps": getOperation("List provider catalog entries.", {
@@ -119,34 +110,25 @@ export function createOpenApiDocument(
       type: "array",
       items: { $ref: "#/components/schemas/ActionDefinition" },
     }),
-    "/api/actions/{actionId}": {
-      ...getOperation("Get one catalog action.", {
-        $ref: "#/components/schemas/ActionDefinition",
-      }),
-      ...createGenericExecutePath(),
-    },
+    "/api/actions/{actionId}": getOperation("Get one catalog action.", {
+      $ref: "#/components/schemas/ActionDefinition",
+    }),
+    "/api/action-guides/{actionId}": getOperation("Get one markdown action guide.", {
+      type: "string",
+      description: "Markdown guide for one action.",
+    }),
     "/api/connections": getOperation("List local provider connections.", {
       type: "array",
       items: { $ref: "#/components/schemas/ConnectionSummary" },
     }),
-    "/api/connections/{service}/no-auth": createNoAuthConnectionPath(),
-    "/api/connections/{service}/api-key": createCredentialConnectionPath(
-      "Connect a provider with API key credentials.",
-    ),
-    "/api/connections/{service}/custom-credential": createCredentialConnectionPath(
-      "Connect a provider with custom credentials.",
-    ),
-    "/api/connections/{service}": createDisconnectPath(),
-    "/api/connections/{service}/oauth/start": createStartOAuthPath(),
+    "/api/connections/{service}": createConnectionPath(),
     "/api/oauth/configs": getOperation("List local OAuth client configurations.", {
       type: "array",
       items: { $ref: "#/components/schemas/OAuthClientConfigSummary" },
     }),
     "/api/oauth/configs/{service}": createOAuthConfigPath(),
-    "/api/runs": getOperation("List recent local action runs.", {
-      type: "array",
-      items: { $ref: "#/components/schemas/RunLog" },
-    }),
+    "/api/oauth/authorizations": createOAuthAuthorizationPath(),
+    "/api/runs": runsPath,
     "/mcp": createMcpPath(),
     "/mcp/tools": getOperation("List discovery-oriented MCP tool summaries.", {
       type: "object",
@@ -156,10 +138,6 @@ export function createOpenApiDocument(
       required: ["tools"],
     }),
   };
-
-  if (concreteAction) {
-    paths[`/api/actions/${concreteAction.id}`] = createExecutePath(concreteAction);
-  }
 
   return {
     openapi: "3.1.0",
@@ -206,7 +184,7 @@ export function createOpenApiDocument(
         ),
         ErrorResponse: errorResponseSchema,
         ExecutionResult: executionResultSchema,
-        CredentialConnectionRequest: credentialValuesSchema,
+        ConnectionUpsertRequest: createConnectionUpsertRequestSchema(),
         OAuthClientConfigSummary: jsonSchema.object(
           {
             service: jsonSchema.string({ description: "Provider service identifier." }),
@@ -274,31 +252,33 @@ function createMcpPath(): unknown {
   };
 }
 
-function createGenericExecutePath(): Record<string, unknown> {
+function createRunsPath(): Record<string, unknown> {
   return {
+    get: {
+      summary: "List recent local action runs.",
+      responses: {
+        200: jsonResponse({
+          type: "array",
+          items: { $ref: "#/components/schemas/RunLog" },
+        }),
+      },
+    },
     post: {
-      summary: "Execute an action by id.",
+      summary: "Create a local action run.",
       description:
         "Use the action catalog to discover provider-specific input and output schemas. For a compact strongly typed OpenAPI document for one action, request /openapi.json?actionId=<actionId>.",
-      parameters: [
-        {
-          name: "actionId",
-          in: "path",
-          required: true,
-          schema: jsonSchema.string({ description: "Action id, usually <service>.<name>." }),
-        },
-      ],
       requestBody: {
         required: true,
         content: {
           "application/json": {
             schema: jsonSchema.object(
               {
+                actionId: jsonSchema.string({ description: "Action id, usually <service>.<name>." }),
                 input: jsonSchema.unknownObject("Action input matching the catalog schema."),
               },
               {
-                required: ["input"],
-                description: "Generic action execution request.",
+                required: ["actionId", "input"],
+                description: "Generic action run creation request.",
               },
             ),
           },
@@ -313,30 +293,17 @@ function createGenericExecutePath(): Record<string, unknown> {
   };
 }
 
-function createNoAuthConnectionPath(): Record<string, unknown> {
-  return {
-    post: {
-      summary: "Connect a no-auth provider.",
-      responses: {
-        200: jsonResponse({ $ref: "#/components/schemas/ConnectionSummary" }),
-        400: jsonResponse({ $ref: "#/components/schemas/ErrorResponse" }),
-        404: jsonResponse({ $ref: "#/components/schemas/ErrorResponse" }),
-      },
-    },
-  };
-}
-
-function createCredentialConnectionPath(summary: string): Record<string, unknown> {
+function createConnectionPath(): Record<string, unknown> {
   return {
     put: {
-      summary,
+      summary: "Create or replace a local provider connection.",
       description:
-        "The accepted field keys are declared by the provider catalog auth metadata. Unknown fields are rejected.",
+        "The accepted auth type and credential field keys are declared by the provider catalog auth metadata. Unknown fields are rejected.",
       requestBody: {
         required: true,
         content: {
           "application/json": {
-            schema: { $ref: "#/components/schemas/CredentialConnectionRequest" },
+            schema: { $ref: "#/components/schemas/ConnectionUpsertRequest" },
           },
         },
       },
@@ -346,11 +313,6 @@ function createCredentialConnectionPath(summary: string): Record<string, unknown
         404: jsonResponse({ $ref: "#/components/schemas/ErrorResponse" }),
       },
     },
-  };
-}
-
-function createDisconnectPath(): Record<string, unknown> {
-  return {
     delete: {
       summary: "Disconnect a provider.",
       responses: {
@@ -375,10 +337,26 @@ function createDisconnectPath(): Record<string, unknown> {
   };
 }
 
-function createStartOAuthPath(): Record<string, unknown> {
+function createOAuthAuthorizationPath(): Record<string, unknown> {
   return {
     post: {
       summary: "Start provider OAuth authorization.",
+      requestBody: {
+        required: true,
+        content: {
+          "application/json": {
+            schema: jsonSchema.object(
+              {
+                service: jsonSchema.string({ description: "Provider service identifier." }),
+              },
+              {
+                required: ["service"],
+                description: "OAuth authorization creation request.",
+              },
+            ),
+          },
+        },
+      },
       responses: {
         200: jsonResponse(
           jsonSchema.object(
@@ -453,43 +431,61 @@ function getOperation(summary: string, schema: JsonSchema): Record<string, unkno
   };
 }
 
-function createExecutePath(action: ActionDefinition): Record<string, unknown> {
-  return {
-    post: {
-      summary: `Execute ${action.id}.`,
-      description: action.description,
-      requestBody: {
-        required: true,
-        content: {
-          "application/json": {
-            schema: jsonSchema.object(
-              {
-                input: action.inputSchema,
-              },
-              {
-                required: ["input"],
-                description: `Execution request for ${action.id}.`,
-              },
-            ),
-          },
-        },
+function createConnectionUpsertRequestSchema(): JsonSchema {
+  return jsonSchema.object(
+    {
+      authType: jsonSchema.string({
+        description: "Connection auth type: no_auth, api_key, or custom_credential.",
+      }),
+      values: {
+        type: "object",
+        additionalProperties: { type: "string" },
+        description: "Credential values keyed by provider-declared field ids.",
       },
-      responses: {
-        200: jsonResponse(
-          jsonSchema.object(
+    },
+    {
+      required: ["authType"],
+      description: "Connection upsert request.",
+    },
+  );
+}
+
+function createConcreteRunOperation(action: ActionDefinition): Record<string, unknown> {
+  return {
+    summary: `Create a local run for ${action.id}.`,
+    description: action.description,
+    requestBody: {
+      required: true,
+      content: {
+        "application/json": {
+          schema: jsonSchema.object(
             {
-              ok: { const: true, type: "boolean" },
-              output: action.outputSchema,
+              actionId: { const: action.id, type: "string" },
+              input: action.inputSchema,
             },
             {
-              required: ["ok", "output"],
-              description: `Successful execution result for ${action.id}.`,
+              required: ["actionId", "input"],
+              description: `Run creation request for ${action.id}.`,
             },
           ),
-        ),
-        400: jsonResponse({ $ref: "#/components/schemas/ExecutionResult" }),
-        404: jsonResponse({ $ref: "#/components/schemas/ErrorResponse" }),
+        },
       },
+    },
+    responses: {
+      200: jsonResponse(
+        jsonSchema.object(
+          {
+            ok: { const: true, type: "boolean" },
+            output: action.outputSchema,
+          },
+          {
+            required: ["ok", "output"],
+            description: `Successful execution result for ${action.id}.`,
+          },
+        ),
+      ),
+      400: jsonResponse({ $ref: "#/components/schemas/ExecutionResult" }),
+      404: jsonResponse({ $ref: "#/components/schemas/ErrorResponse" }),
     },
   };
 }

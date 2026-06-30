@@ -61,9 +61,9 @@ provider tokens are never exposed.
 ## API key example
 
 ```bash
-curl -s -X PUT http://localhost:3000/api/connections/example/api-key \
+curl -s -X PUT http://localhost:3000/api/connections/example \
   -H 'content-type: application/json' \
-  -d '{"values":{"apiKey":"...","accountId":"..."}}'
+  -d '{"authType":"api_key","values":{"apiKey":"...","accountId":"..."}}'
 ```
 
 The accepted keys are `apiKey` plus the provider's `auth[].extraFields`.
@@ -71,9 +71,9 @@ The accepted keys are `apiKey` plus the provider's `auth[].extraFields`.
 ## Custom credential example
 
 ```bash
-curl -s -X PUT http://localhost:3000/api/connections/example/custom-credential \
+curl -s -X PUT http://localhost:3000/api/connections/example \
   -H 'content-type: application/json' \
-  -d '{"values":{"host":"localhost","password":"..."}}'
+  -d '{"authType":"custom_credential","values":{"host":"localhost","password":"..."}}'
 ```
 
 The accepted keys come from the provider's `auth[].fields`.
@@ -98,7 +98,9 @@ curl -s -X PUT http://localhost:3000/api/oauth/configs/example \
 Start authorization with:
 
 ```bash
-curl -s -X POST http://localhost:3000/api/connections/example/oauth/start
+curl -s -X POST http://localhost:3000/api/oauth/authorizations \
+  -H 'content-type: application/json' \
+  -d '{"service":"example"}'
 ```
 
 Open the returned `authorizationUrl` in a browser and finish the provider callback.

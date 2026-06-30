@@ -45,10 +45,10 @@ describe("ConnectServer", () => {
       displayName: "Example",
     });
 
-    const connectionResponse = await app.request("/api/connections/example/api-key", {
+    const connectionResponse = await app.request("/api/connections/example", {
       method: "PUT",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ values: {} }),
+      body: JSON.stringify({ authType: "api_key", values: {} }),
     });
 
     expect(connectionResponse.status).toBe(400);
@@ -85,19 +85,6 @@ describe("ConnectServer", () => {
     });
   });
 
-  it("documents action execution on the action resource route", async () => {
-    const app = createTestServer([{ ...apiKeyProvider, actions: [echoAction] }]).createApp();
-
-    const response = await app.request("/openapi.json");
-    const document = (await response.json()) as {
-      paths: Record<string, Record<string, unknown>>;
-    };
-
-    expect(document.paths["/api/actions/{actionId}"]).toHaveProperty("get");
-    expect(document.paths["/api/actions/{actionId}"]).toHaveProperty("post");
-    expect(document.paths).not.toHaveProperty("/api/actions/{actionId}/execute");
-  });
-
   it("stores redacted run log summaries for HTTP action execution", async () => {
     const runs = new MemoryRunLogStore();
     const server = createTestServer(
@@ -114,16 +101,17 @@ describe("ConnectServer", () => {
     );
     const app = server.createApp();
 
-    await app.request("/api/connections/example/api-key", {
+    await app.request("/api/connections/example", {
       method: "PUT",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ values: { apiKey: "example-key" } }),
+      body: JSON.stringify({ authType: "api_key", values: { apiKey: "example-key" } }),
     });
 
-    const response = await app.request("/api/actions/example.echo", {
+    const response = await app.request("/api/runs", {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
+        actionId: "example.echo",
         input: {
           query: "hello",
           apiKey: "secret-key",
@@ -171,13 +159,13 @@ describe("ConnectServer", () => {
       },
     ).createApp();
 
-    await app.request("/api/connections/example/api-key", {
+    await app.request("/api/connections/example", {
       method: "PUT",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ values: { apiKey: "example-key" } }),
+      body: JSON.stringify({ authType: "api_key", values: { apiKey: "example-key" } }),
     });
 
-    const response = await app.request("/api/actions/example.echo/agent.md");
+    const response = await app.request("/api/action-guides/example.echo");
 
     expect(response.status).toBe(200);
     const markdown = await response.text();
@@ -205,10 +193,10 @@ describe("ConnectServer", () => {
       },
     ).createApp();
 
-    const response = await app.request("/api/actions/example.echo", {
+    const response = await app.request("/api/runs", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ input: {} }),
+      body: JSON.stringify({ actionId: "example.echo", input: {} }),
     });
 
     expect(response.status).toBe(400);

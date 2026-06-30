@@ -9,7 +9,7 @@ import { WebStandardStreamableHTTPServerTransport } from "@modelcontextprotocol/
 import { Scalar } from "@scalar/hono-api-reference";
 import { Hono } from "hono";
 import { ConnectionError } from "../connection-service.ts";
-import { optionalRecord, optionalString } from "../core/cast.ts";
+import { optionalRecord, optionalString, requiredString } from "../core/cast.ts";
 import { createMcpServer, listMcpToolSummaries } from "../mcp.ts";
 import { OAuthClientConfigError, OAuthClientConfigService } from "../oauth/oauth-client-config-service.ts";
 import { OAuthFlowError, OAuthFlowService } from "../oauth/oauth-flow-service.ts";
@@ -81,32 +81,22 @@ export class ConnectServer {
 
     app.get("/api/actions", (context) => context.json(this.options.catalog.actions));
     app.get("/api/actions/:actionId", (context) => this.getAction(context, context.req.param("actionId")));
-    app.get("/api/actions/:actionId/agent.md", (context) =>
+    app.get("/api/action-guides/:actionId", (context) =>
       this.getActionMarkdown(context, context.req.param("actionId")),
     );
-    app.post("/api/actions/:actionId", (context) => this.executeAction(context, context.req.param("actionId")));
 
     app.get("/api/connections", (context) => this.listConnections(context));
-    app.post("/api/connections/:service/no-auth", (context) =>
-      this.connectWithoutAuth(context, context.req.param("service")),
-    );
-    app.put("/api/connections/:service/api-key", (context) =>
-      this.connectWithApiKey(context, context.req.param("service")),
-    );
-    app.put("/api/connections/:service/custom-credential", (context) =>
-      this.connectWithCustomCredential(context, context.req.param("service")),
-    );
+    app.put("/api/connections/:service", (context) => this.upsertConnection(context, context.req.param("service")));
     app.delete("/api/connections/:service", (context) => this.disconnect(context, context.req.param("service")));
-    app.post("/api/connections/:service/oauth/start", (context) =>
-      this.startOAuth(context, context.req.param("service")),
-    );
 
     app.get("/api/runs", (context) => context.json(this.options.actions.listRuns()));
+    app.post("/api/runs", (context) => this.createRun(context));
     app.get("/api/oauth/configs", (context) => this.listOAuthConfigs(context));
     app.put("/api/oauth/configs/:service", (context) => this.upsertOAuthConfig(context, context.req.param("service")));
     app.delete("/api/oauth/configs/:service", (context) =>
       this.deleteOAuthConfig(context, context.req.param("service")),
     );
+    app.post("/api/oauth/authorizations", (context) => this.createOAuthAuthorization(context));
     app.get("/oauth/callback/:service", (context) => this.completeOAuth(context, context.req.param("service")));
     app.all("/mcp", (context) => this.handleMcp(context));
     app.get("/mcp/tools", (context) => context.json({ tools: listMcpToolSummaries() }));
@@ -157,13 +147,18 @@ export class ConnectServer {
     );
   }
 
-  private async executeAction(context: Context, actionId: string): Promise<Response> {
+  private async createRun(context: Context): Promise<Response> {
+    const body = await readJsonBody(context);
+    const actionId = optionalString(body.actionId);
+    if (!actionId) {
+      return jsonError(context, 400, "invalid_input", "actionId is required.");
+    }
+
     const action = this.options.catalog.actionsById.get(actionId);
     if (!action) {
       return notFound(context);
     }
 
-    const body = await readJsonBody(context);
     const result = await this.options.actions.run({
       actionId,
       input: body.input ?? {},
@@ -201,31 +196,50 @@ export class ConnectServer {
     return context.json(await this.options.connections.listConnections());
   }
 
-  private async connectWithoutAuth(context: Context, service: string): Promise<Response> {
-    return this.writeConnectionResult(context, this.options.connections.connectWithoutAuth(service));
-  }
-
-  private async connectWithApiKey(context: Context, service: string): Promise<Response> {
+  private async upsertConnection(context: Context, service: string): Promise<Response> {
     const body = await readJsonBody(context);
-    const values = body.values ?? body;
-    return this.writeConnectionResult(context, this.options.connections.connectWithApiKey(service, { values }));
-  }
+    const authType = optionalString(body.authType);
+    if (!authType) {
+      return jsonError(context, 400, "invalid_input", "authType is required.");
+    }
 
-  private async connectWithCustomCredential(context: Context, service: string): Promise<Response> {
-    const body = await readJsonBody(context);
     const values = body.values ?? body;
-    return this.writeConnectionResult(
-      context,
-      this.options.connections.connectWithCustomCredential(service, { values }),
-    );
+    if (authType === "no_auth") {
+      return this.writeConnectionResult(context, this.options.connections.connectWithoutAuth(service));
+    }
+    if (authType === "api_key") {
+      return this.writeConnectionResult(context, this.options.connections.connectWithApiKey(service, { values }));
+    }
+    if (authType === "custom_credential") {
+      return this.writeConnectionResult(
+        context,
+        this.options.connections.connectWithCustomCredential(service, { values }),
+      );
+    }
+
+    return jsonError(context, 400, "unsupported_auth_type", `${service} does not support ${authType}.`);
   }
 
   private async disconnect(context: Context, service: string): Promise<Response> {
     return this.writeConnectionResult(context, this.options.connections.disconnect(service));
   }
 
-  private async startOAuth(context: Context, service: string): Promise<Response> {
-    return this.writeOAuthResult(context, this.options.oauthFlow.startAuthorization(service));
+  private async createOAuthAuthorization(context: Context): Promise<Response> {
+    const body = await readJsonBody(context);
+    try {
+      const service = requiredString(
+        body.service,
+        "service",
+        (message) => new OAuthFlowError("invalid_input", message),
+      );
+      return await this.writeOAuthResult(context, this.options.oauthFlow.startAuthorization(service));
+    } catch (error) {
+      if (error instanceof OAuthFlowError) {
+        return jsonError(context, error.code === "unknown_service" ? 404 : 400, error.code, error.message);
+      }
+
+      throw error;
+    }
   }
 
   private async listOAuthConfigs(context: Context): Promise<Response> {
