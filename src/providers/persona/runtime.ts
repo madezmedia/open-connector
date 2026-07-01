@@ -2,7 +2,7 @@ import type { CredentialValidationResult, ProviderExecutors } from "../../core/t
 import type { ApiKeyProviderContext } from "../provider-runtime.ts";
 import type { PersonaActionName } from "./actions.ts";
 
-import { nullableString, objectArray, optionalRecord, optionalString, stringArray } from "../../core/cast.ts";
+import { nullableString, optionalRecord, optionalString, stringArray } from "../../core/cast.ts";
 import { defineApiKeyProviderExecutors, ProviderRequestError, providerUserAgent } from "../provider-runtime.ts";
 
 const personaApiBaseUrl = "https://api.withpersona.com/api/v1";

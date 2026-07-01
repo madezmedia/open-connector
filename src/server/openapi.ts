@@ -114,6 +114,20 @@ export function createOpenApiDocument(
       type: "array",
       items: { $ref: "#/components/schemas/ActionDefinition" },
     }),
+    "/api/actions/search": getOperation("Catalog", "Fuzzy keyword search over the action catalog.", {
+      type: "array",
+      items: { $ref: "#/components/schemas/ActionSearchResult" },
+    }),
+    "/v1/actions/search": getOperation("Catalog", "Fuzzy keyword search over the action catalog.", {
+      type: "object",
+      properties: {
+        success: { type: "boolean" },
+        message: { type: "string" },
+        data: { type: "array", items: { $ref: "#/components/schemas/ActionSearchRuntimeResult" } },
+        meta: { type: "object", additionalProperties: true },
+      },
+      required: ["success", "message", "data", "meta"],
+    }),
     "/api/actions/{actionId}": getOperation("Catalog", "Get one catalog action.", {
       $ref: "#/components/schemas/ActionDefinition",
     }),
@@ -168,6 +182,29 @@ export function createOpenApiDocument(
     components: {
       schemas: {
         ActionDefinition: jsonSchema.unknownObject("Public action catalog definition with runtime execution status."),
+        ActionSearchResult: jsonSchema.object(
+          {
+            id: jsonSchema.string({ description: "The unique action identifier." }),
+            service: jsonSchema.string({ description: "The provider service that owns the action." }),
+            name: jsonSchema.string({ description: "The provider-scoped action name." }),
+            description: jsonSchema.string({ description: "The action description." }),
+          },
+          {
+            required: ["id", "service", "name", "description"],
+            description: "A single action returned by fuzzy keyword search.",
+          },
+        ),
+        ActionSearchRuntimeResult: jsonSchema.object(
+          {
+            service: jsonSchema.string({ description: "The provider service that owns the action." }),
+            name: jsonSchema.string({ description: "The provider-scoped action name." }),
+            description: jsonSchema.string({ description: "The action description." }),
+          },
+          {
+            required: ["service", "name", "description"],
+            description: "A single action returned by the /v1 keyword search endpoint.",
+          },
+        ),
         ConnectionSummary: jsonSchema.object(
           {
             service: jsonSchema.string({ description: "Provider service identifier." }),

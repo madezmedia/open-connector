@@ -1,12 +1,14 @@
 import type { CatalogStore, RuntimeActionDefinition } from "./catalog-store.ts";
 import type { ConnectionService, ConnectionSummary } from "./connection-service.ts";
 import type { ActionPolicyService } from "./core/action-policy.ts";
+import type { ActionSearchIndexProvider } from "./core/action-search.ts";
 import type { JsonSchema, ProviderDefinition } from "./core/types.ts";
 import type { IProviderLoader } from "./providers/provider-loader.ts";
 import type { ActionRunner } from "./server/action-runner.ts";
 
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import * as z from "zod/v4";
+import { createActionSearchIndexProvider, searchActions as searchActionIndex } from "./core/action-search.ts";
 import { renderActionMarkdown } from "./server/action-markdown.ts";
 
 /**
@@ -18,6 +20,7 @@ export interface IMcpServerOptions {
   connections: ConnectionService;
   actions: ActionRunner;
   actionPolicy?: ActionPolicyService;
+  actionSearch?: ActionSearchIndexProvider;
 }
 
 /**
@@ -170,30 +173,23 @@ async function searchActions(
   options: IMcpServerOptions,
   input: { query?: string; service?: string; limit: number },
 ): Promise<unknown> {
-  const normalized = input.query?.trim().toLowerCase();
-  const actions = options.catalog.actions
-    .filter((action) => {
-      if (input.service && action.service !== input.service) {
-        return false;
-      }
-      if (!normalized) {
-        return true;
-      }
-
-      return [action.id, action.name, action.description, action.requiredScopes.join(" ")]
-        .join(" ")
-        .toLowerCase()
-        .includes(normalized);
-    })
-    .slice(0, input.limit)
-    .map(async (action) => ({
-      id: action.id,
-      service: action.service,
-      name: action.name,
-      description: action.description,
-      capability: await describeActionCapability(options, action),
-      inputSummary: summarizeInputSchema(action.inputSchema),
-    }));
+  const query = input.query?.trim();
+  const actionSearch = options.actionSearch ?? createActionSearchIndexProvider(options.catalog.actions);
+  const rankedActions = query
+    ? searchActionIndex(await actionSearch.get(), query, { service: input.service, limit: input.limit })
+        .map((result) => options.catalog.actionsById.get(result.id))
+        .filter((action): action is RuntimeActionDefinition => Boolean(action))
+    : options.catalog.actions
+        .filter((action) => !input.service || action.service === input.service)
+        .slice(0, input.limit);
+  const actions = rankedActions.map(async (action) => ({
+    id: action.id,
+    service: action.service,
+    name: action.name,
+    description: action.description,
+    capability: await describeActionCapability(options, action),
+    inputSummary: summarizeInputSchema(action.inputSchema),
+  }));
 
   return Promise.all(actions);
 }

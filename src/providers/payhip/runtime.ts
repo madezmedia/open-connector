@@ -3,7 +3,6 @@ import type { ApiKeyProviderContext } from "../provider-runtime.ts";
 import type { PayhipActionName } from "./actions.ts";
 
 import {
-  optionalBoolean,
   optionalIntegerLike,
   optionalNumber,
   optionalRawString,

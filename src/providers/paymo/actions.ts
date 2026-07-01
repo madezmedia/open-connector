@@ -1,5 +1,7 @@
+import type { ProviderActionDefinition } from "../../core/provider-definition.ts";
+
 import { s } from "../../core/json-schema.ts";
-import { defineProviderAction, type ProviderActionDefinition } from "../../core/provider-definition.ts";
+import { defineProviderAction } from "../../core/provider-definition.ts";
 
 const service = "paymo";
 

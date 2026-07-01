@@ -510,6 +510,28 @@ describe("ConnectServer", () => {
       ],
     });
 
+    const apiSearch = await app.request("/api/actions/search?q=echo");
+    expect(apiSearch.status).toBe(200);
+    const apiSearchResults = (await apiSearch.json()) as Array<{ id: string; service: string; name: string }>;
+    expect(apiSearchResults[0]).toMatchObject({
+      id: "example.echo",
+      service: "example",
+      name: "echo",
+    });
+
+    const runtimeSearch = await app.request("/v1/actions/search?q=echo");
+    expect(runtimeSearch.status).toBe(200);
+    const runtimeSearchBody = (await runtimeSearch.json()) as {
+      success: boolean;
+      data: Array<{ service: string; name: string; description: string }>;
+    };
+    expect(runtimeSearchBody.success).toBe(true);
+    expect(runtimeSearchBody.data[0]).toMatchObject({
+      service: "example",
+      name: "echo",
+      description: "Echo input.",
+    });
+
     const action = await app.request("/v1/actions/example.echo");
     expect(action.status).toBe(200);
     await expect(action.json()).resolves.toMatchObject({

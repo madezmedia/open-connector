@@ -1,6 +1,7 @@
 import type { CatalogStore } from "../catalog-store.ts";
 import type { ConnectionService } from "../connection-service.ts";
 import type { ActionPolicyService } from "../core/action-policy.ts";
+import type { ActionSearchIndexProvider } from "../core/action-search.ts";
 import type { IProviderLoader } from "../providers/provider-loader.ts";
 import type { LocalAuthOptions } from "./auth.ts";
 import type { Logger } from "./logger.ts";
@@ -11,6 +12,7 @@ import { WebStandardStreamableHTTPServerTransport } from "@modelcontextprotocol/
 import { Scalar } from "@scalar/hono-api-reference";
 import { Hono } from "hono";
 import { ConnectionError } from "../connection-service.ts";
+import { DEFAULT_ACTION_SEARCH_LIMIT, createActionSearchIndexProvider, searchActions } from "../core/action-search.ts";
 import { optionalRecord, optionalString, requiredString } from "../core/cast.ts";
 import { createMcpServer, listMcpToolSummaries } from "../mcp.ts";
 import { OAuthClientConfigError, OAuthClientConfigService } from "../oauth/oauth-client-config-service.ts";
@@ -48,6 +50,7 @@ export interface IConnectServerOptions {
   staticRoot: string;
   auth?: LocalAuthOptions;
   actionPolicy?: ActionPolicyService;
+  actionSearch?: ActionSearchIndexProvider;
   logger?: Logger;
 }
 
@@ -57,9 +60,11 @@ export interface IConnectServerOptions {
  */
 export class ConnectServer {
   private readonly options: IConnectServerOptions;
+  private readonly actionSearch: ActionSearchIndexProvider;
 
   constructor(options: IConnectServerOptions) {
     this.options = options;
+    this.actionSearch = options.actionSearch ?? createActionSearchIndexProvider(options.catalog.actions);
   }
 
   createApp(): Hono {
@@ -71,6 +76,7 @@ export class ConnectServer {
     app.get("/v1/health", (context) => writeRuntimeSuccess(context, { ok: true, runtime: "oomol-connect" }));
     app.get("/v1/providers", (context) => this.listRuntimeProviders(context));
     app.get("/v1/actions", (context) => this.listRuntimeActions(context));
+    app.get("/v1/actions/search", (context) => this.searchRuntimeActions(context));
     app.get("/v1/actions/:actionId", (context) => this.getRuntimeAction(context, context.req.param("actionId")));
     app.post("/v1/actions/:actionId", (context) => this.createRuntimeActionRun(context, context.req.param("actionId")));
     app.get("/v1/apps", (context) => this.listRuntimeApps(context));
@@ -115,6 +121,7 @@ export class ConnectServer {
     app.get("/api/providers/:service", (context) => this.getProvider(context, context.req.param("service")));
 
     app.get("/api/actions", (context) => context.json(this.options.catalog.actions));
+    app.get("/api/actions/search", (context) => this.searchApiActions(context));
     app.get("/api/actions/:actionId/agent.md", (context) =>
       this.getActionMarkdown(context, context.req.param("actionId")),
     );
@@ -219,6 +226,21 @@ export class ConnectServer {
     return context.json(action);
   }
 
+  private async searchApiActions(context: Context): Promise<Response> {
+    const query = readSearchQuery(context);
+    if (!query.ok) {
+      return jsonError(context, 400, "invalid_input", query.message);
+    }
+
+    const index = await this.actionSearch.get();
+    return context.json(
+      searchActions(index, query.q, {
+        service: query.service,
+        limit: query.limit,
+      }),
+    );
+  }
+
   private async getActionMarkdown(context: Context, actionId: string): Promise<Response> {
     const action = this.options.catalog.actionsById.get(actionId);
     if (!action) {
@@ -286,6 +308,31 @@ export class ConnectServer {
 
     const actions = this.options.catalog.actions.filter((action) => action.service === service);
     return writeRuntimeSuccess(context, actions.map(serializeRuntimeAction));
+  }
+
+  private async searchRuntimeActions(context: Context): Promise<Response> {
+    const query = readSearchQuery(context, 10);
+    if (!query.ok) {
+      return writeRuntimeFailure(context, {
+        status: 400,
+        errorCode: "invalid_input",
+        message: query.message,
+      });
+    }
+
+    const index = await this.actionSearch.get();
+    const results = searchActions(index, query.q, {
+      service: query.service,
+      limit: query.limit,
+    });
+    return writeRuntimeSuccess(
+      context,
+      results.map((result) => ({
+        service: result.service,
+        name: result.name,
+        description: result.description,
+      })),
+    );
   }
 
   private getRuntimeAction(context: Context, actionId: string): Response {
@@ -387,6 +434,7 @@ export class ConnectServer {
       connections: this.options.connections,
       actions: this.options.actions,
       actionPolicy: this.options.actionPolicy,
+      actionSearch: this.actionSearch,
     });
 
     await server.connect(transport);
@@ -563,4 +611,45 @@ function readConnectionName(context: Context, body?: Record<string, unknown>): s
     optionalString(context.req.query("connectionName")) ??
     optionalString(context.req.query("alias"))
   );
+}
+
+type SearchQuery =
+  | {
+      ok: true;
+      q: string;
+      service?: string;
+      limit: number;
+    }
+  | {
+      ok: false;
+      message: string;
+    };
+
+function readSearchQuery(context: Context, defaultLimit = DEFAULT_ACTION_SEARCH_LIMIT): SearchQuery {
+  const q = optionalString(context.req.query("q") ?? context.req.query("query"));
+  if (!q || q.length > 256) {
+    return { ok: false, message: "q must be a non-empty string of at most 256 characters." };
+  }
+
+  const rawLimit = optionalString(context.req.query("limit"));
+  if (!rawLimit) {
+    return {
+      ok: true,
+      q,
+      service: optionalString(context.req.query("service")),
+      limit: defaultLimit,
+    };
+  }
+
+  const limit = Number(rawLimit);
+  if (!Number.isInteger(limit) || limit < 1 || limit > 50) {
+    return { ok: false, message: "limit must be an integer between 1 and 50." };
+  }
+
+  return {
+    ok: true,
+    q,
+    service: optionalString(context.req.query("service")),
+    limit,
+  };
 }
