@@ -70,7 +70,7 @@ export const credentialValidators: CredentialValidators = {
       method: "GET",
       path: "/order/result",
       query: {
-        id: "oomol-connector-validation",
+        id: "connect-validation",
       },
     }, { fetcher, signal });
     const payload = await readFraudlabsproPayload(response);

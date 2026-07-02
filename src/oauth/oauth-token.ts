@@ -89,7 +89,7 @@ async function requestToken(input: TokenRequest): Promise<Extract<ResolvedCreden
     );
   }
 
-  const accessToken = requiredString(payload.access_token, "access_token", input.createError);
+  const accessToken = requiredString(payload.access_token ?? payload.token, "access_token", input.createError);
   const tokenType = optionalString(payload.token_type) ?? "Bearer";
   const expiresIn = typeof payload.expires_in === "number" ? payload.expires_in : undefined;
   return {

@@ -123,6 +123,30 @@ describe("OAuthFlowService", () => {
     });
     await expect(services.connections.getCredential("example")).resolves.toBeUndefined();
   });
+
+  it("accepts token responses that use token instead of access_token", async () => {
+    const services = createServices([oauthProvider]);
+    await services.clientConfigs.upsertConfig({
+      service: "example",
+      clientId: "client-id",
+      clientSecret: "client-secret",
+      extra: {
+        tenant: "default",
+      },
+    });
+    vi.stubGlobal("fetch", vi.fn(async () => Response.json({ token: "intercom-token" })));
+
+    const started = await services.flow.startAuthorization({ service: "example", connectionName: "work" });
+    await expect(services.flow.completeAuthorization({ state: started.state, code: "code" })).resolves.toEqual({
+      service: "example",
+      connected: true,
+    });
+
+    await expect(services.connections.getCredential("example", "work")).resolves.toMatchObject({
+      authType: "oauth2",
+      accessToken: "intercom-token",
+    });
+  });
 });
 
 function createServices(providers: ProviderDefinition[]): {
