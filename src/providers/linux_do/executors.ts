@@ -89,12 +89,12 @@ async function topicFeed(
   context: LinuxDoActionContext,
 ): Promise<unknown> {
   const xml = await requestLinuxDoRss(path, query, context);
-  return parseFeedSafely(xml, (text) => parseTopicFeed(text, optionalLimit(input)));
+  return await parseFeedSafely(xml, (text) => parseTopicFeed(text, optionalLimit(input)));
 }
 
 async function postFeed(path: string, input: Record<string, unknown>, context: LinuxDoActionContext): Promise<unknown> {
   const xml = await requestLinuxDoRss(path, {}, context);
-  return parseFeedSafely(xml, (text) => parsePostFeed(text, optionalLimit(input)));
+  return await parseFeedSafely(xml, (text) => parsePostFeed(text, optionalLimit(input)));
 }
 
 async function badgeFeed(
@@ -103,7 +103,7 @@ async function badgeFeed(
   context: LinuxDoActionContext,
 ): Promise<unknown> {
   const xml = await requestLinuxDoRss(path, {}, context);
-  return parseFeedSafely(xml, (text) => parseBadgeFeed(text, optionalLimit(input)));
+  return await parseFeedSafely(xml, (text) => parseBadgeFeed(text, optionalLimit(input)));
 }
 
 async function requestLinuxDoRss(
@@ -148,9 +148,9 @@ async function requestLinuxDoRss(
   return body;
 }
 
-function parseFeedSafely<T>(xml: string, parse: (xml: string) => T): T {
+async function parseFeedSafely<T>(xml: string, parse: (xml: string) => Promise<T>): Promise<T> {
   try {
-    return parse(xml);
+    return await parse(xml);
   } catch (error) {
     if (error instanceof ProviderRequestError) {
       throw error;

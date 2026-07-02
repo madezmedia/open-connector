@@ -1,3 +1,5 @@
+import Parser from "rss-parser";
+
 export interface LinuxDoFeedMeta {
   title: string | null;
   link: string | null;
@@ -59,82 +61,64 @@ export interface LinuxDoBadgeFeed {
   count: number;
 }
 
-interface LinuxDoRssItem {
-  title: string | null;
-  link: string | null;
-  guid: string | null;
-  creator: string | null;
-  categories: string[];
-  content: string | null;
-  contentSnippet: string | null;
-  isoDate: string | null;
-  topicPinned: string | null;
-  topicClosed: string | null;
-  topicArchived: string | null;
-  grantedAt: string | null;
-  grantedBy: string | null;
+interface LinuxDoRssFields {
+  topicPinned?: string;
+  topicClosed?: string;
+  topicArchived?: string;
+  grantedAt?: string;
+  grantedBy?: string;
 }
 
-export function parseTopicFeed(xml: string, limit?: number): LinuxDoTopicFeed {
-  const feed = parseRssFeed(xml);
+type ParsedLinuxDoRssItem = Parser.Item & LinuxDoRssFields;
+
+const rssParser = new Parser<Record<string, unknown>, LinuxDoRssFields>({
+  customFields: {
+    item: [
+      ["discourse:topicPinned", "topicPinned"],
+      ["discourse:topicClosed", "topicClosed"],
+      ["discourse:topicArchived", "topicArchived"],
+      ["discourse:grantedAt", "grantedAt"],
+      ["discourse:grantedBy", "grantedBy"],
+    ],
+  },
+});
+
+export async function parseTopicFeed(xml: string, limit?: number): Promise<LinuxDoTopicFeed> {
+  const feed = await rssParser.parseString(xml);
   const topics = applyLimit(feed.items, limit).map(normalizeTopic);
-  return { feed: feed.feed, topics, count: topics.length };
+  return { feed: toFeedMeta(feed), topics, count: topics.length };
 }
 
-export function parsePostFeed(xml: string, limit?: number): LinuxDoPostFeed {
-  const feed = parseRssFeed(xml);
+export async function parsePostFeed(xml: string, limit?: number): Promise<LinuxDoPostFeed> {
+  const feed = await rssParser.parseString(xml);
   const posts = applyLimit(feed.items, limit).map(normalizePost);
-  return { feed: feed.feed, posts, count: posts.length };
+  return { feed: toFeedMeta(feed), posts, count: posts.length };
 }
 
-export function parseBadgeFeed(xml: string, limit?: number): LinuxDoBadgeFeed {
-  const feed = parseRssFeed(xml);
+export async function parseBadgeFeed(xml: string, limit?: number): Promise<LinuxDoBadgeFeed> {
+  const feed = await rssParser.parseString(xml);
   const grants = applyLimit(feed.items, limit).map(normalizeBadgeGrant);
-  return { feed: feed.feed, grants, count: grants.length };
+  return { feed: toFeedMeta(feed), grants, count: grants.length };
 }
 
-function parseRssFeed(xml: string): { feed: LinuxDoFeedMeta; items: LinuxDoRssItem[] } {
-  const channelXml = collectElements(xml, "channel")[0] ?? xml;
-  const items = collectElements(channelXml, "item").map(parseItem);
+function toFeedMeta(feed: Parser.Output<LinuxDoRssFields>): LinuxDoFeedMeta {
   return {
-    feed: {
-      title: readTextTag(channelXml, "title"),
-      link: readTextTag(channelXml, "link"),
-      description: readTextTag(channelXml, "description"),
-    },
-    items,
+    title: nonEmpty(feed.title),
+    link: nonEmpty(feed.link),
+    description: nonEmpty(feed.description),
   };
 }
 
-function parseItem(itemXml: string): LinuxDoRssItem {
-  const content = readTextTag(itemXml, "content:encoded") ?? readTextTag(itemXml, "description");
-  return {
-    title: readTextTag(itemXml, "title"),
-    link: readTextTag(itemXml, "link"),
-    guid: readTextTag(itemXml, "guid"),
-    creator: readTextTag(itemXml, "dc:creator"),
-    categories: collectTextTags(itemXml, "category"),
-    content,
-    contentSnippet: content ? htmlToText(content) : null,
-    isoDate: normalizeDate(readTextTag(itemXml, "pubDate")),
-    topicPinned: readTextTag(itemXml, "discourse:topicPinned"),
-    topicClosed: readTextTag(itemXml, "discourse:topicClosed"),
-    topicArchived: readTextTag(itemXml, "discourse:topicArchived"),
-    grantedAt: readTextTag(itemXml, "discourse:grantedAt"),
-    grantedBy: readTextTag(itemXml, "discourse:grantedBy"),
-  };
-}
-
-function normalizeTopic(item: LinuxDoRssItem): LinuxDoTopicSummary {
+function normalizeTopic(item: ParsedLinuxDoRssItem): LinuxDoTopicSummary {
   return {
     id: extractTopicId(item.link, item.guid),
-    title: item.title,
-    url: item.link,
-    author: item.creator,
-    category: item.categories[0] ?? null,
-    excerpt: item.contentSnippet,
-    descriptionHtml: item.content,
-    pubDate: item.isoDate,
+    title: nonEmpty(item.title),
+    url: nonEmpty(item.link),
+    author: nonEmpty(item.creator),
+    category: nonEmpty(item.categories?.[0]),
+    excerpt: nonEmpty(item.contentSnippet),
+    descriptionHtml: nonEmpty(item.content),
+    pubDate: nonEmpty(item.isoDate),
     pinned: yesNoToBool(item.topicPinned),
     closed: yesNoToBool(item.topicClosed),
     archived: yesNoToBool(item.topicArchived),
@@ -142,29 +126,29 @@ function normalizeTopic(item: LinuxDoRssItem): LinuxDoTopicSummary {
   };
 }
 
-function normalizePost(item: LinuxDoRssItem): LinuxDoPostSummary {
+function normalizePost(item: ParsedLinuxDoRssItem): LinuxDoPostSummary {
   const ref = extractPostRef(item.link, item.guid);
   return {
     id: ref.postId,
     topicId: ref.topicId,
     postNumber: ref.postNumber,
-    title: item.title,
-    url: item.link,
-    author: item.creator,
-    excerpt: item.contentSnippet,
-    contentHtml: item.content,
-    pubDate: item.isoDate,
+    title: nonEmpty(item.title),
+    url: nonEmpty(item.link),
+    author: nonEmpty(item.creator),
+    excerpt: nonEmpty(item.contentSnippet),
+    contentHtml: nonEmpty(item.content),
+    pubDate: nonEmpty(item.isoDate),
     raw: toRawItem(item),
   };
 }
 
-function normalizeBadgeGrant(item: LinuxDoRssItem): LinuxDoBadgeGrant {
+function normalizeBadgeGrant(item: ParsedLinuxDoRssItem): LinuxDoBadgeGrant {
   return {
-    grantee: item.title,
+    grantee: nonEmpty(item.title),
     username: extractUsernameFromGuid(item.guid),
-    grantedAt: item.grantedAt,
-    grantedBy: item.grantedBy,
-    url: item.guid,
+    grantedAt: nonEmpty(item.grantedAt),
+    grantedBy: nonEmpty(item.grantedBy),
+    url: nonEmpty(item.guid),
     raw: toRawItem(item),
   };
 }
@@ -232,87 +216,6 @@ export function yesNoToBool(value?: string | null): boolean | null {
   return null;
 }
 
-function collectElements(xml: string, tagName: string): string[] {
-  const elements: string[] = [];
-  const openingTag = `<${tagName}`;
-  const closingTag = `</${tagName}>`;
-  let searchFrom = 0;
-
-  while (searchFrom < xml.length) {
-    const openingStart = xml.indexOf(openingTag, searchFrom);
-    if (openingStart < 0) {
-      break;
-    }
-    const openingEnd = xml.indexOf(">", openingStart);
-    if (openingEnd < 0) {
-      break;
-    }
-    const closingStart = xml.indexOf(closingTag, openingEnd + 1);
-    if (closingStart < 0) {
-      break;
-    }
-    const closingEnd = closingStart + closingTag.length;
-    elements.push(xml.slice(openingStart, closingEnd));
-    searchFrom = closingEnd;
-  }
-
-  return elements;
-}
-
-function collectTextTags(xml: string, tagName: string): string[] {
-  return collectElements(xml, tagName).flatMap((element) => {
-    const text = readElementText(element, tagName);
-    return text ? [text] : [];
-  });
-}
-
-function readTextTag(xml: string, tagName: string): string | null {
-  const element = collectElements(xml, tagName)[0];
-  return element ? readElementText(element, tagName) : null;
-}
-
-function readElementText(element: string, tagName: string): string | null {
-  const openingEnd = element.indexOf(">");
-  const closingStart = element.lastIndexOf(`</${tagName}>`);
-  if (openingEnd < 0 || closingStart < 0 || closingStart <= openingEnd) {
-    return null;
-  }
-  return nonEmpty(decodeXmlText(element.slice(openingEnd + 1, closingStart)));
-}
-
-function decodeXmlText(value: string): string {
-  const trimmed = value.trim();
-  const cdata = trimmed.match(/^<!\[CDATA\[([\s\S]*)\]\]>$/);
-  return decodeXmlEntities(cdata ? cdata[1] : trimmed);
-}
-
-function decodeXmlEntities(value: string): string {
-  return value.replaceAll(/&(#x[0-9a-f]+|#\d+|amp|lt|gt|quot|apos);/gi, (entity, code: string) => {
-    const normalized = code.toLowerCase();
-    if (normalized === "amp") return "&";
-    if (normalized === "lt") return "<";
-    if (normalized === "gt") return ">";
-    if (normalized === "quot") return '"';
-    if (normalized === "apos") return "'";
-    const charCode = normalized.startsWith("#x")
-      ? Number.parseInt(normalized.slice(2), 16)
-      : Number(normalized.slice(1));
-    return Number.isFinite(charCode) ? String.fromCodePoint(charCode) : entity;
-  });
-}
-
-function htmlToText(html: string): string | null {
-  return nonEmpty(decodeXmlEntities(html.replaceAll(/<[^>]*>/g, " ").replaceAll(/\s+/g, " ")));
-}
-
-function normalizeDate(value: string | null): string | null {
-  if (!value) {
-    return null;
-  }
-  const time = Date.parse(value);
-  return Number.isFinite(time) ? new Date(time).toISOString() : value;
-}
-
 function applyLimit<T>(items: T[], limit?: number): T[] {
   if (limit == null || !Number.isFinite(limit) || limit < 0) {
     return items;
@@ -328,7 +231,7 @@ function nonEmpty(value: unknown): string | null {
   return trimmed.length > 0 ? trimmed : null;
 }
 
-function toRawItem(item: LinuxDoRssItem): Record<string, unknown> {
+function toRawItem(item: ParsedLinuxDoRssItem): Record<string, unknown> {
   return {
     title: item.title,
     link: item.link,
