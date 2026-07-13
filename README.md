@@ -1,274 +1,147 @@
-<div align="center">
+# open-connector — Fleet Deployment
 
-<img src="assets/openconnector-readme-banner.png" alt="OpenConnector - Connect Once. Use Everywhere." width="100%" />
+**Managed by:** Fleet-Ops / Bentley
+**Repo:** [madezmedia/open-connector](https://github.com/madezmedia/open-connector)
+**Tier:** P0 — SaaS Auth Gateway
+**VM:** `152.53.201.27` (u70402)
+**Subdomain:** `open-connector-u70402.vm.elestio.app`
+**Portainer:** `/opt/app/open-connector/`
 
-[English](README.md) | [简体中文](docs/README.zh-CN.md) | [日本語](docs/README.ja.md) | [Русский](docs/README.ru.md) | [Français](docs/README.fr.md)
+---
 
-[![License: Apache-2.0](https://img.shields.io/badge/License-Apache--2.0-blue.svg)](LICENSE.txt)
-![Node.js 22+](https://img.shields.io/badge/Node.js-22%2B-339933)
-![Cloudflare compatible](https://img.shields.io/badge/Cloudflare-compatible-F38020)
-![MCP](https://img.shields.io/badge/MCP-ready-111827)
-![OpenAPI](https://img.shields.io/badge/OpenAPI-3.1-6BA539)
+## Architecture
 
-[![Providers](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fconnector.oomol.com%2Fv1%2Fcatalog&query=data.providerCount&label=Providers&color=%237d7fe9)](https://oomol.com/apps)
-[![Actions](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fconnector.oomol.com%2Fv1%2Fcatalog&query=data.actionCount&label=Actions&color=%237d7fe9)](https://oomol.com/apps)
-
-</div>
-
-OpenConnector is an open-source connector gateway for AI agents and an alternative to Composio.
-Connect user app accounts once, then expose a shared catalog of 1,000+ providers and 9,400+
-prebuilt Actions to agents and applications.
-
-Use the [Connector SDK](https://github.com/oomol-lab/connector-sdk) from app code,
-[oo CLI](https://github.com/oomol-lab/oo-cli) as the local-agent relay, MCP from agent hosts,
-HTTP/OpenAPI from custom clients, and the Web Console for administration and debugging.
-
-- Keep credentials, scopes, schemas, policies, and run logs inside an inspectable runtime.
-- Run locally, on Fly.io, on Cloudflare-compatible infrastructure, or through OOMOL's hosted
-  runtime.
-- Use the same provider ids, Action ids, schemas, and contracts across open-source and commercial
-  SaaS deployments.
-
-## What It Provides
-
-- A working connector catalog across products such as GitHub, Gmail, Notion, BigQuery, Google
-  Analytics, Supabase, Airtable, Slack, and more.
-- Credential handling for API keys, OAuth2, custom credentials, and no-auth providers.
-- Inspectable Action contracts: request/response schemas, required scopes, and lazy-loaded executor
-  source.
-- Runtime controls for connection identity, scopes, runtime tokens, action allow/block policies,
-  temporary file transit, and redacted run logs.
-- Deployment options for local Docker or Node.js, Fly.io with persistent SQLite storage,
-  Cloudflare Workers with D1/R2/Static Assets, and OOMOL's hosted runtime.
-
-## Where It Fits
-
-OpenConnector fits products where agents need durable access to the tools users already use, without
-handing provider credentials to the agent process.
-
-- Agent products that need reusable access across work apps, developer tools, data systems,
-  communication platforms, and AI services.
-- Products adding agent workflows that need stable, inspectable Action contracts for user app
-  access.
-- Teams that want hosted auth for speed while keeping a path to private or self-hosted runtime
-  control.
-
-## Developer Tools
-
-| Tool                                                        | Purpose                                                                                                                                                                 |
-| ----------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| [Connector SDK](https://github.com/oomol-lab/connector-sdk) | Thin TypeScript HTTP client. Use `OpenConnector` for self-hosted runtimes, or `Connector` / `ProjectConnector` for OOMOL-hosted personal and SaaS end-user connections. |
-| [oo CLI](https://github.com/oomol-lab/oo-cli)               | Local agent relay for connector Actions. `oo connector` can search, inspect, and run Actions against OOMOL-hosted or self-hosted OpenConnector runtimes.                |
-| MCP                                                         | Expose app Actions to MCP-capable agent hosts through `http://localhost:3000/mcp`.                                                                                      |
-| HTTP / OpenAPI                                              | Call `/v1/actions/*` directly or inspect the generated `/openapi.json` document.                                                                                        |
-
-Endpoint details, response envelopes, auth headers, MCP tools, and Action guide examples are in
-[docs/runtime-api.md](docs/runtime-api.md).
-
-## Dashboard Preview
-
-OpenConnector ships with a local Dashboard for browsing connectors, configuring credentials,
-creating runtime tokens, and inspecting runtime usage.
-
-### Connector Catalog
-
-Use the connector catalog to see available services, search for providers, and open their Actions
-and credential setup from one place.
-
-![OpenConnector connector catalog dashboard](assets/open-console-en.jpg)
-
-### Usage Overview
-
-Use the Overview page after deployment to monitor runtime readiness, available providers,
-executable Actions, recent failures, tool call trends, and recent calls.
-
-![OpenConnector runtime overview dashboard](assets/overview-page-en.jpg)
-
-Provider names and trademarks belong to their respective owners and are used only for identification
-and interoperability.
-
-## How It Works
-
-```mermaid
-flowchart LR
-  Agent["AI Agent / App"] -->|"SDK / CLI / MCP / HTTP"| Gateway["OpenConnector Gateway"]
-  Gateway --> Auth["Credential & OAuth Boundary"]
-  Gateway --> Catalog["Provider Catalog"]
-  Gateway --> Actions["Open-source Action Executors"]
-  Gateway --> Policy["Tokens, Scopes, Allow/Block Policy"]
-  Gateway --> Logs["Run Logs"]
-  Actions --> Providers["1,000+ Providers"]
-  Console["Web Console"] --> Gateway
-  Cloudflare["Cloudflare Workers, D1, R2"] -. deploy .-> Gateway
+```
+GitHub (main) ──push──► GitHub Actions ──build──► local-registry:5000
+                                                          │
+                                                          ▼
+                                              nginx (port 443)
+                                                    │
+                                           open-connector-u70402.vm.elestio.app
+                                                    │
+                                              reverse proxy to :3000
+                                                    │
+                                              open-connector container
 ```
 
-Apps and agents discover Actions, inspect schemas and scopes, select a connection alias, and execute
-through the gateway. Provider secrets stay behind the runtime boundary; agents receive the metadata,
-safe account labels, and execution results needed for the run.
-
-## Usage Paths
-
-| Path                         | Best for                                            | Includes                                                                                                                                                                  |
-| ---------------------------- | --------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Open-source self-host        | Developers and teams that want full control         | Local Docker or Node runtime, SQLite storage, MCP, HTTP, OpenAPI, and Web Console                                                                                         |
-| Fly.io self-host             | Teams that want a hosted Docker runtime             | Node Docker runtime, SQLite storage on a Fly volume, TLS, health checks, MCP, HTTP, OpenAPI, and Web Console                                                              |
-| Cloudflare-compatible deploy | Teams that want a lightweight hosted runtime        | Workers runtime, D1 state, R2 transit files, and Static Assets for the console                                                                                            |
-| [OOMOL](https://oomol.com/)  | Teams blocked by OAuth approval or launch deadlines | Hosted auth and runtime infrastructure with the same provider and Action contracts; compatible with the open-source interface for later private or self-hosted deployment |
-
-## Cloudflare Quick Start Video
-
-[![Deploy OpenConnector on Cloudflare Workers](assets/cloudflare-quickstart-video.png)](https://www.youtube.com/watch?v=R0V1ZdCuTgc)
-
-The
-[Cloudflare Workers deployment walkthrough](https://www.youtube.com/watch?v=R0V1ZdCuTgc) shows how
-to launch OpenConnector on Cloudflare with Workers, D1, R2, and the Web Console. The video follows
-the same flow as [docs/cloudflare.md](docs/cloudflare.md): create Cloudflare resources, copy
-`wrangler.example.jsonc` to `wrangler.local.jsonc`, apply D1 migrations, set required secrets, and
-run `npm run deploy:cloudflare`.
+---
 
 ## Quick Start
 
-Start the runtime with Docker Compose:
-
 ```bash
-docker compose up --build
+# Clone (already done on VM at /opt/app/open-connector/)
+git clone https://github.com/madezmedia/open-connector.git /opt/app/open-connector
+
+# Deploy
+docker compose -f docker-compose.prod.yml up -d
+
+# Check logs
+docker compose -f docker-compose.prod.yml logs -f
+
+# Restart
+docker compose -f docker-compose.prod.yml restart
+
+# Stop
+docker compose -f docker-compose.prod.yml down
 ```
 
-Open the local console and generated API reference:
+---
 
-```text
-http://localhost:3000
-http://localhost:3000/docs
-```
+## Environment Variables
 
-Run a no-auth Action to verify the runtime:
+| Variable | Required | Description |
+|---|---|---|
+| `OOMOL_CONNECT_ORIGIN` | Yes | CORS origin (use `*` for all, or specific domain) |
+| `OOMOL_CONNECT_ENCRYPTION_KEY` | Yes | AES-256 encryption key for stored credentials |
+| `OOMOL_CONNECT_ADMIN_TOKEN` | Yes | Admin API token (high-privilege) |
+| `OOMOL_CONNECT_RUNTIME_TOKEN` | Yes | Runtime token (agent-facing) |
+| `OOMOL_CONNECT_ALLOWED_ACTIONS` | No | Comma-separated allowed actions (default: `*`) |
+| `OOMOL_CONNECT_BLOCKED_ACTIONS` | No | Comma-separated blocked actions |
+| `OOMOL_CONNECT_ALLOWED_PROXIES` | No | Allowed proxy URLs |
+| `OOMOL_CONNECT_BLOCKED_PROXIES` | No | Blocked proxy URLs |
 
+**Generate a key:**
 ```bash
-curl -s -X POST http://localhost:3000/v1/actions/hackernews.get_top_stories \
-  -H 'content-type: application/json' \
-  -d '{"input":{}}'
+openssl rand -hex 32
 ```
 
-See [docs/quickstart.md](docs/quickstart.md) for the full local setup, first provider connection,
-OAuth flow, and runtime settings.
+---
 
-## Connect a Provider
+## Endpoints
 
-GitHub is the simplest credentialed example because it can use a personal access token:
+| Endpoint | Method | Description |
+|---|---|---|
+| `http://localhost:3000/` | GET | API info |
+| `http://localhost:3000/health` | GET | Health check |
+| `http://localhost:3000/api/v1/` | * | OCI REST API |
+| `http://open-connector-u70402.vm.elestio.app/` | GET | Public HTTPS |
 
+---
+
+## CI/CD
+
+- **Build:** GitHub Actions on every push to `main`
+- **Registry:** Local Docker registry at `152.53.201.27:5000`
+- **Deploy:** SSH to VM → `docker compose -f docker-compose.prod.yml up -d`
+- **Health check:** `/health` endpoint polled every 30s
+
+---
+
+## Rotation
+
+### Restart (no downtime)
 ```bash
-curl -s -X PUT http://localhost:3000/api/connections/github \
-  -H 'content-type: application/json' \
-  -d '{"authType":"api_key","values":{"apiKey":"github_pat_..."}}'
-
-curl -s -X POST http://localhost:3000/v1/actions/github.get_current_user \
-  -H 'content-type: application/json' \
-  -d '{"input":{}}'
+cd /opt/app/open-connector
+git pull
+docker compose -f docker-compose.prod.yml pull connector
+docker compose -f docker-compose.prod.yml up -d --no-deps connector
 ```
 
-For OAuth2 apps, named connections, credential encryption, token refresh, and action policies, see
-[docs/credentials.md](docs/credentials.md) and [docs/configuration.md](docs/configuration.md).
-
-## Web Console
-
-For npm-based local development, open `http://localhost:5173`; the Web Console dev server proxies
-API requests to the runtime on `http://localhost:3000`. For Docker or a built Node runtime, the
-console is served from `http://localhost:3000`.
-
-The console supports provider browsing, API key and OAuth client configuration, runtime token
-creation, Action schema inspection, Action debugging, recent run review, and access to the
-generated OpenAPI and MCP metadata.
-
-## Cloudflare Deployment
-
-OpenConnector can run on Cloudflare with Workers for the runtime, D1 for state, R2 for transit
-files, and Static Assets for the Web Console.
-
-See [docs/cloudflare.md](docs/cloudflare.md) for resource creation, migrations, secrets, local Worker
-preview, and remote deployment.
-
-## Fly.io Deployment
-
-OpenConnector can also run on Fly.io with the Node Docker runtime and persistent SQLite storage on a
-Fly volume.
-
-See [docs/fly-io.md](docs/fly-io.md) for app creation, volume setup, secrets, deployment, custom
-domains, and scaling.
-
-## Want to Use It Directly?
-
-The paths above are for teams integrating connectors into their own products, runtimes, or
-infrastructure. If you want to try the SaaS connection experience first, or use it directly in
-day-to-day work, you do not need to deploy OpenConnector or integrate the SDK, CLI, MCP, or HTTP API
-first.
-
-[Wanta](https://wanta.ai/) is the desktop product entry point using the same shared 1,000+
-SaaS/provider coverage. Connect accounts once, then use natural language to search, organize,
-create, and sync across connected tools.
-
-| If You Want to                           | Wanta Provides                                                                                                                  |
-| ---------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
-| Try 1,000+ SaaS connections directly     | Use the same SaaS/provider coverage without deploying a runtime or integrating SDK/CLI first.                                   |
-| Use Agents in daily work                 | Work across email, chat, docs, data, projects, support, developer tools, and marketing tools in natural language.               |
-| Share connected capabilities with a team | Configure connections and access scopes once; teammates use them without setup while keys, tokens, and credentials stay hidden. |
-
-## Documentation
-
-- [Quickstart](docs/quickstart.md)
-- [Developer tools](docs/sdk-cli.md)
-- [Gmail OAuth and SDK tutorial](docs/gmail-oauth-sdk.md)
-- [Runtime API and MCP](docs/runtime-api.md)
-- [Fly.io deployment](docs/fly-io.md)
-- [Cloudflare deployment](docs/cloudflare.md)
-- [Configuration](docs/configuration.md)
-- [Credentials and OAuth](docs/credentials.md)
-- [Catalog format](docs/catalog-format.md)
-- [Verification language](docs/verification.md)
-- [Contributing](CONTRIBUTING.md)
-- [Code of Conduct](CODE_OF_CONDUCT.md)
-- [Security](SECURITY.md)
-
-## Development
-
-Use Node.js 22 or newer:
-
+### Full rebuild
 ```bash
-npm install
-npm run dev
+cd /opt/app/open-connector
+docker compose -f docker-compose.prod.yml down
+docker compose -f docker-compose.prod.yml build --no-cache connector
+docker compose -f docker-compose.prod.yml up -d
 ```
 
-The local API runtime listens on `http://localhost:3000`. The Web Console dev server listens on
-`http://localhost:5173` and proxies API requests to the runtime.
+---
 
-Before opening a pull request:
+## Nginx Subdomain
 
+Already configured at:
+```
+open-connector-u70402.vm.elestio.app → localhost:3000
+```
+
+Config: `/opt/elestio/nginx/conf.d/open-connector-u70402.vm.elestio.app.conf`
+
+Reload after changes:
 ```bash
-npm run fix-check
-npm test
+ssh root@152.53.201.27 "nginx -t && systemctl reload nginx"
 ```
 
-Provider code lives under `src/providers/<service>`. See
-[CONTRIBUTING.md](CONTRIBUTING.md#adding-providers) for provider contribution rules.
+---
 
-## License Scope
+## Portainer
 
-Unless otherwise noted, the source code, scripts, generated project scaffolding, tests, and
-documentation authored for this repository are licensed under the Apache License, Version 2.0. See
-[LICENSE.txt](LICENSE.txt).
+Stack name: `open-connector`
+Config file: `/opt/app/open-connector/docker-compose.prod.yml`
+Image: `152.53.201.27:5000/open-connector:latest`
 
-The Apache-2.0 license for this repository does not grant rights to third-party products,
-providers, apps, APIs, trademarks, service marks, trade names, logos, icons, brand assets,
-documentation, screenshots, or other copyrighted materials owned by their respective holders.
+---
 
-Provider and app names, metadata, links, scopes, permissions, and optional logos/icons are included
-only to identify services and enable interoperability. All third-party brand and product rights
-remain with their respective owners. Inclusion in this catalog does not imply endorsement,
-sponsorship, partnership, certification, or verification by those owners.
+## Fleet Alignment
 
-If you contribute provider metadata or assets, only submit material you have the right to submit.
-Prefer linking to official public assets instead of copying brand files into this repository.
+- **ACMI Profile:** `acmi:service:open-connector` (registered during first deploy)
+- **Health monitoring:** Uptime Kuma probe at `/health`
+- **Log aggregation:** Loki / Grafana (via `docker logs` JSON)
+- **Secrets:** Managed via VM `.env` file (not in Git)
 
-## Community
+---
 
-Please keep issues and pull requests focused, respectful, and actionable. Participation in this
-project is governed by [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md).
+## Providers Connected (1000+ SaaS)
+
+Google, Microsoft, Slack, GitHub, Salesforce, Stripe, Twilio, OpenAI, Anthropic, and 990+ more via OCI (Open Connector Interface).
+
+See: [OOMOL Connect Catalog](https://www.oomol.com/connect)

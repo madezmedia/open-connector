@@ -1,0 +1,56 @@
+# Canonical production docker-compose for open-connector on VM fleet
+# Managed by: Fleet-Ops / Bentley
+# Portainer path: /opt/app/open-connector/docker-compose.prod.yml
+
+services:
+  connector:
+    container_name: open-connector
+    build:
+      context: ${APP_DIR:-/opt/app/open-connector}
+      dockerfile: ${APP_DIR:-/opt/app/open-connector}/docker/Dockerfile
+      args:
+        NODE_ENV: production
+    image: ${IMAGE:-open-connector}:latest
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:3000:3000"   # Local-only; nginx proxies through subdomain
+    volumes:
+      - open-connector-data:/app/data
+    env_file:
+      - ${APP_DIR:-/opt/app/open-connector}/.env
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      HOST: 0.0.0.0
+      OOMOL_CONNECT_DATA_DIR: /app/data
+      OOMOL_CONNECT_ORIGIN: "${OOMOL_CONNECT_ORIGIN:-*}"
+      OOMOL_CONNECT_ENCRYPTION_KEY: "${OOMOL_CONNECT_ENCRYPTION_KEY}"
+      OOMOL_CONNECT_ADMIN_TOKEN: "${OOMOL_CONNECT_ADMIN_TOKEN}"
+      OOMOL_CONNECT_RUNTIME_TOKEN: "${OOMOL_CONNECT_RUNTIME_TOKEN}"
+      OOMOL_CONNECT_ALLOWED_ACTIONS: "${OOMOL_CONNECT_ALLOWED_ACTIONS:-*}"
+      OOMOL_CONNECT_BLOCKED_ACTIONS: "${OOMOL_CONNECT_BLOCKED_ACTIONS:-}"
+      OOMOL_CONNECT_ALLOWED_PROXIES: "${OOMOL_CONNECT_ALLOWED_PROXIES:-}"
+      OOMOL_CONNECT_BLOCKED_PROXIES: "${OOMOL_CONNECT_BLOCKED_PROXIES:-}"
+    labels:
+      # Portainer managed
+      com.portainer.agent.stack.name: open-connector
+      com.madezmedia.fleet.service: open-connector
+      com.madezmedia.fleet.tier: P0
+      com.madezmedia.fleet.last-deploy: "${DEPLOY_TIMESTAMP:-unknown}"
+      com.madezmedia.fleet.deployed-by: "${DEPLOYED_BY:-ci-cd}"
+    healthcheck:
+      test: ["CMD", "node", "scripts/healthcheck.ts"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+        reservations:
+          memory: 256M
+
+volumes:
+  open-connector-data:
+    driver: local

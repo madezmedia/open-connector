@@ -1,0 +1,113 @@
+name: Deploy — VM Production
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      reason:
+        description: "Reason for manual deploy"
+        required: false
+        default: "manual trigger"
+
+# Cancel in-progress runs on new push to main
+concurrency:
+  group: deploy-vm-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  REGISTRY: ${{ vars.VM_REGISTRY_HOST || '152.53.201.27:5000' }}
+  APP_DIR: /opt/app/open-connector
+  SERVICE_NAME: open-connector
+  IMAGE: ${{ vars.VM_REGISTRY_HOST || '152.53.201.27:5000' }}/open-connector
+
+jobs:
+  deploy:
+    name: Build & Deploy to VM
+    runs-on: ubuntu-latest
+    if: github.repository == 'madezmedia/open-connector'
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+        with:
+          driver-opts: |
+            image=moby/buildkit:buildx-stable-1
+            network=host
+
+      - name: Login to VM registry
+        run: |
+          echo "${{ secrets.VM_REGISTRY_PASSWORD }}" | \
+          docker login ${{ env.REGISTRY }} \
+            -u ${{ secrets.VM_REGISTRY_USER }} --password-stdin
+
+      - name: Extract commit info
+        id: meta
+        run: |
+          TAG=$(echo "${{ github.sha }}" | cut -c1-8)
+          IMAGE_TAG="${{ env.IMAGE }}:${TAG}"
+          echo "tag=${IMAGE_TAG}" >> $GITHUB_OUTPUT
+          echo "short_sha=${TAG}" >> $GITHUB_OUTPUT
+
+      - name: Build and push image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          tags: ${{ steps.meta.outputs.tag }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          build-args: |
+            NODE_ENV=production
+
+      - name: Deploy via SSH
+        uses: apple/actions SSH-keys@master
+        with:
+          keys: |
+            ${{ secrets.VM_SSH_FINGERPRINT }}
+          ssh-key: ${{ secrets.VM_SSH_PRIVATE_KEY }}
+
+      - name: Run deploy commands on VM
+        run: |
+          ssh ${{ secrets.VM_SSH_USER }}@${{ vars.VM_HOST }} << 'ENDSSH'
+            set -e
+            echo "=== Pulling new image ==="
+            docker pull ${{ steps.meta.outputs.tag }}
+
+            echo "=== Loading env ==="
+            set -a && source /opt/app/open-connector/.env && set +a
+
+            echo "=== Stop old container ==="
+            cd /opt/app/open-connector
+            docker compose -f docker-compose.prod.yml down || true
+
+            echo "=== Tag image ==="
+            docker tag ${{ steps.meta.outputs.tag }} ${{ env.IMAGE }}:latest
+
+            echo "=== Start new container ==="
+            IMAGE=${{ env.IMAGE }} docker compose -f docker-compose.prod.yml up -d
+
+            echo "=== Health check ==="
+            sleep 10
+            curl -sf http://localhost:3000/health || { echo "HEALTH CHECK FAILED"; exit 1; }
+
+            echo "=== Prune old images ==="
+            docker image prune -f
+
+            echo "=== Done ==="
+            docker ps --filter name=open-connector --format '{{.Names}} {{.Status}}'
+          ENDSSH
+        env:
+          IMAGE: ${{ env.IMAGE }}
+
+      - name: Post deploy note
+        run: |
+          echo "✅ open-connector deployed — commit ${{ github.sha }} — ${{ github.actor }}"
